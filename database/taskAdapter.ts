@@ -1,7 +1,6 @@
 import { sqliteDb, TaskData, TaskLocation } from './sqlite-db';
 import { TaskStatus, SyncStatus, ConflictResolution } from './models/Task';
 
-// Adapter class to mimic WatermelonDB Task model API
 export class TaskAdapter {
   id: string;
   private data: TaskData;
@@ -33,10 +32,12 @@ export class TaskAdapter {
   get price() { return this.data.price; }
   set price(value: number | undefined) { this.data.price = value; }
   get location(): TaskLocation | undefined {
-    if (this.data.location_lat && this.data.location_lng) {
+    if ((this.data.location_lat !== undefined && this.data.location_lat !== null) ||
+        (this.data.location_lng !== undefined && this.data.location_lng !== null) ||
+        (this.data.location_address && this.data.location_address.trim())) {
       return {
-        lat: this.data.location_lat,
-        lng: this.data.location_lng,
+        lat: this.data.location_lat ?? 0,
+        lng: this.data.location_lng ?? 0,
         address: this.data.location_address || '',
       };
     }
@@ -55,7 +56,6 @@ export class TaskAdapter {
   }
   get imageUrl(): string | string[] | undefined {
     if (!this.data.image_url) return undefined;
-    // Try to parse as JSON array, fallback to single string
     try {
       const parsed = JSON.parse(this.data.image_url);
       return Array.isArray(parsed) ? parsed : this.data.image_url;
@@ -63,9 +63,11 @@ export class TaskAdapter {
       return this.data.image_url;
     }
   }
-  set imageUrl(value: string | string[] | undefined) {
-    if (Array.isArray(value)) {
-      this.data.image_url = JSON.stringify(value);
+  set imageUrl(value: string | string[] | undefined | null) {
+    if (value === undefined || value === null) {
+      this.data.image_url = null;
+    } else if (Array.isArray(value)) {
+      this.data.image_url = value.length > 0 ? JSON.stringify(value) : null;
     } else {
       this.data.image_url = value;
     }
@@ -151,7 +153,6 @@ export class TaskAdapter {
   }
 }
 
-// Database-like interface
 export const database = {
   get: (table: string) => ({
     create: async (initializer: (task: TaskAdapter) => void) => {
@@ -200,7 +201,6 @@ export const database = {
             const tasks = tasksData.map(data => new TaskAdapter(data));
             callback(tasks);
           });
-          // Return an object with unsubscribe method
           return {
             unsubscribe: () => {
               if (typeof unsubscribe === 'function') {

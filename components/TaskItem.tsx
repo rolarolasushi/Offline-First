@@ -1,15 +1,20 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Image, Pressable } from 'react-native';
+import Animated, { useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { Task } from '@/database';
 import { SyncStatus, TaskStatus } from '@/database/models/Task';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 interface TaskItemProps {
   task: Task;
   onPress: () => void;
   onStatusChange: (task: Task, newStatus: TaskStatus) => void;
+  isLeftColumn?: boolean;
+  isFirstInRightColumn?: boolean;
 }
 
 const getStatusColor = (status: TaskStatus, colorScheme: 'light' | 'dark' | null) => {
@@ -26,14 +31,15 @@ const getStatusColor = (status: TaskStatus, colorScheme: 'light' | 'dark' | null
   }
 };
 
-const getSyncStatusIcon = (syncStatus: SyncStatus) => {
+const getSyncStatusIcon = (syncStatus: SyncStatus, colorScheme: 'light' | 'dark' | null) => {
+  const greenColor = colorScheme === 'dark' ? '#4ade80' : '#22c55e';
   switch (syncStatus) {
     case 'pending_sync':
       return '⏳';
     case 'syncing':
       return <ActivityIndicator size="small" color="#3b82f6" />;
     case 'synced':
-      return '✓';
+      return <ThemedText style={{ color: greenColor, fontSize: 14, fontWeight: 'bold' }}>✓</ThemedText>;
     default:
       return '';
   }
@@ -52,13 +58,10 @@ const getSyncStatusText = (syncStatus: SyncStatus) => {
   }
 };
 
-const formatStatusDisplay = (status: TaskStatus): string => {
-  return status.replace(/_/g, ' ').toUpperCase();
-};
-
-export function TaskItem({ task, onPress, onStatusChange }: TaskItemProps) {
+export function TaskItem({ task, onPress, onStatusChange, isLeftColumn = true, isFirstInRightColumn = false }: TaskItemProps) {
   const colorScheme = useColorScheme();
-  const statusColor = getStatusColor(task.status, colorScheme);
+  const statusColor = getStatusColor(task.status, colorScheme ?? 'light');
+  const [isPressed, setIsPressed] = React.useState(false);
 
   const handleStatusPress = () => {
     const statusOrder: TaskStatus[] = ['pending', 'in_progress', 'done', 'cancelled'];
@@ -67,18 +70,53 @@ export function TaskItem({ task, onPress, onStatusChange }: TaskItemProps) {
     onStatusChange(task, statusOrder[nextIndex]);
   };
 
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        {
+          scale: withSpring(isPressed ? 0.98 : 1, {
+            damping: 20,
+            stiffness: 300,
+          }),
+        },
+      ],
+      opacity: withTiming(isPressed ? 0.9 : 1, { duration: 100 }),
+    };
+  });
+
+  const handlePressIn = () => {
+    setIsPressed(true);
+  };
+
+  const handlePressOut = () => {
+    setIsPressed(false);
+  };
+
+  const handlePress = () => {
+    onPress();
+  };
+
+  const containerStyle = [
+    styles.container,
+    !isLeftColumn && isFirstInRightColumn && styles.rightColumnFirstItem,
+  ];
+
   return (
-    <TouchableOpacity onPress={onPress} style={styles.container}>
+    <AnimatedPressable
+      onPress={handlePress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={[containerStyle, animatedStyle]}
+    >
       <ThemedView style={styles.taskCard}>
+        <TouchableOpacity 
+          style={[styles.statusIndicator, { backgroundColor: statusColor }]}
+          onPress={handleStatusPress}
+        />
         <View style={styles.header}>
-          <ThemedText type="defaultSemiBold" style={styles.title}>
+          <ThemedText type="defaultSemiBold" style={styles.title} numberOfLines={2}>
             {task.title}
           </ThemedText>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-            <TouchableOpacity onPress={handleStatusPress}>
-              <ThemedText style={styles.statusText}>{formatStatusDisplay(task.status)}</ThemedText>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {task.description && (
@@ -119,16 +157,26 @@ export function TaskItem({ task, onPress, onStatusChange }: TaskItemProps) {
 
         <View style={styles.footer}>
           <View style={styles.syncStatus}>
-            {typeof getSyncStatusIcon(task.syncStatus) === 'string' ? (
+            {task.syncStatus === 'synced' ? (
+              <>
+                {getSyncStatusIcon(task.syncStatus, colorScheme ?? 'light')}
+                <ThemedText style={[styles.syncStatusText, { color: colorScheme === 'dark' ? '#4ade80' : '#22c55e' }]}>
+                  {' '}{getSyncStatusText(task.syncStatus)}
+                </ThemedText>
+              </>
+            ) : typeof getSyncStatusIcon(task.syncStatus, colorScheme ?? 'light') === 'string' ? (
               <ThemedText style={styles.syncStatusText}>
-                {getSyncStatusIcon(task.syncStatus) as string}{' '}
+                {getSyncStatusIcon(task.syncStatus, colorScheme ?? 'light') as string}{' '}
+                {getSyncStatusText(task.syncStatus)}
               </ThemedText>
             ) : (
-              getSyncStatusIcon(task.syncStatus)
+              <>
+                {getSyncStatusIcon(task.syncStatus, colorScheme ?? 'light')}
+                <ThemedText style={styles.syncStatusText}>
+                  {' '}{getSyncStatusText(task.syncStatus)}
+                </ThemedText>
+              </>
             )}
-            <ThemedText style={styles.syncStatusText}>
-              {getSyncStatusText(task.syncStatus)}
-            </ThemedText>
           </View>
 
           {task.conflictResolution && (
@@ -144,45 +192,49 @@ export function TaskItem({ task, onPress, onStatusChange }: TaskItemProps) {
           </ThemedText>
         </View>
       </ThemedView>
-    </TouchableOpacity>
+    </AnimatedPressable>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
     marginBottom: 12,
   },
+  rightColumnFirstItem: {
+    marginTop: 16,
+  },
   taskCard: {
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  statusIndicator: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    zIndex: 1,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
     marginBottom: 8,
   },
   title: {
-    flex: 1,
-    fontSize: 18,
-    marginRight: 12,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  statusText: {
-    color: '#ffffff',
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '600',
+    marginBottom: 6,
   },
   description: {
-    fontSize: 14,
-    marginBottom: 12,
+    fontSize: 12,
+    marginBottom: 8,
     opacity: 0.7,
+    lineHeight: 16,
   },
   imagesContainer: {
     position: 'relative',
@@ -190,7 +242,7 @@ const styles = StyleSheet.create({
   },
   taskImage: {
     width: '100%',
-    height: 150,
+    height: 120,
     borderRadius: 8,
     resizeMode: 'cover',
   },
@@ -209,28 +261,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   metaInfo: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-    flexWrap: 'wrap',
+    flexDirection: 'column',
+    gap: 4,
+    marginBottom: 8,
   },
   metaText: {
-    fontSize: 12,
+    fontSize: 11,
     opacity: 0.7,
   },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
+    gap: 4,
+    marginTop: 8,
   },
   syncStatus: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   syncStatusText: {
-    fontSize: 12,
+    fontSize: 10,
     opacity: 0.7,
   },
   conflictBadge: {
@@ -244,7 +294,7 @@ const styles = StyleSheet.create({
     color: '#92400e',
   },
   dateText: {
-    fontSize: 12,
+    fontSize: 10,
     opacity: 0.5,
   },
 });

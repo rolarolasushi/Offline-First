@@ -38,7 +38,7 @@ export function TaskForm({ onTaskCreated }: TaskFormProps) {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
         quality: 0.8,
-        selectionLimit: 0, // 0 means no limit
+        selectionLimit: 0,
       });
 
       if (!result.canceled && result.assets.length > 0) {
@@ -120,10 +120,8 @@ export function TaskForm({ onTaskCreated }: TaskFormProps) {
     try {
       let location: TaskLocation | undefined;
       if (address.trim()) {
-        // For now, we'll use a default location if address is provided
-        // In a real app, you'd get lat/lng from geocoding
         location = {
-          lat: 19.4326, // Default to Mexico City coordinates
+          lat: 19.4326,
           lng: -99.1332,
           address: address.trim(),
         };
@@ -143,7 +141,6 @@ export function TaskForm({ onTaskCreated }: TaskFormProps) {
             task.location = location;
           }
           if (imageUris.length > 0) {
-            // Store multiple images - the setter will handle JSON stringification
             task.imageUrl = imageUris;
           }
           if (expiresAt) {
@@ -152,7 +149,6 @@ export function TaskForm({ onTaskCreated }: TaskFormProps) {
         });
       });
 
-      // Reset form
       setTitle('');
       setDescription('');
       setPrice('');
@@ -160,7 +156,6 @@ export function TaskForm({ onTaskCreated }: TaskFormProps) {
       setImageUris([]);
       setExpiresAt('');
 
-      // Trigger sync if online
       if (syncManager.getIsOnline()) {
         setTimeout(() => {
           syncManager.syncAll();
@@ -304,8 +299,7 @@ const styles = StyleSheet.create({
   locationButton: {
     backgroundColor: '#3b82f6',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 26,
     justifyContent: 'center',
   },
   locationButtonText: {
@@ -358,7 +352,7 @@ const styles = StyleSheet.create({
   imageButton: {
     flex: 1,
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 26,
     alignItems: 'center',
   },
   cameraButton: {
@@ -378,7 +372,7 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: '#3b82f6',
     padding: 14,
-    borderRadius: 8,
+    borderRadius: 26,
     alignItems: 'center',
     marginTop: 8,
   },

@@ -17,17 +17,14 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   useEffect(() => {
-    // Initialize database and background sync
     const initialize = async () => {
       try {
-        // Database is already initialized when imported
         await registerBackgroundSync();
         
-        // Try to sync on app start if online
         if (syncManager.getIsOnline()) {
           setTimeout(() => {
             syncManager.syncAll();
-          }, 2000); // Wait 2 seconds for app to fully load
+          }, 2000);
         }
       } catch (error) {
         console.error('Error initializing app:', error);

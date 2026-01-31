@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, ScrollView } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { TaskForm } from '@/components/TaskForm';
@@ -7,7 +7,6 @@ import { router } from 'expo-router';
 
 export default function CreateTaskScreen() {
   const handleTaskCreated = () => {
-    // Switch to tasks tab after creating
     router.back();
   };
 

@@ -35,7 +35,6 @@ class SQLiteDatabase {
     
     this.db = await SQLite.openDatabaseAsync('tasks.db');
     
-    // Create tasks table
     await this.db.execAsync(`
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY NOT NULL,
@@ -58,14 +57,11 @@ class SQLiteDatabase {
       );
     `);
     
-    // Add new columns if they don't exist (for existing databases)
     try {
       await this.db.execAsync(`
         ALTER TABLE tasks ADD COLUMN price REAL;
       `);
-    } catch (e) {
-      // Column might already exist
-    }
+    } catch (e) {}
     try {
       await this.db.execAsync(`
         ALTER TABLE tasks ADD COLUMN location_lat REAL;
@@ -118,7 +114,6 @@ class SQLiteDatabase {
     await this.init();
     if (!this.db) throw new Error('Database not initialized');
     
-    // Generate UUID v4 format
     const generateUUID = () => {
       return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
         const r = (Math.random() * 16) | 0;
@@ -240,7 +235,6 @@ class SQLiteDatabase {
     await this.db.runAsync('DELETE FROM tasks WHERE id = ?', [id]);
   }
 
-  // Observable-like subscription for React components
   private listeners: Set<(tasks: TaskData[]) => void> = new Set();
   
   subscribe(listener: (tasks: TaskData[]) => void) {

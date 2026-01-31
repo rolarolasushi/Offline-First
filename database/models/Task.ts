@@ -23,7 +23,6 @@ export default class Task extends Model {
     await this.update((task) => {
       task.status = newStatus;
       task.updatedAt = new Date();
-      // If task was synced, mark as pending sync after local change
       if (task.syncStatus === 'synced') {
         task.syncStatus = 'pending_sync';
       }

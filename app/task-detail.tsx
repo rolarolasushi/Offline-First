@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, Image } from 'react-native';
+import { View, StyleSheet, TextInput, TouchableOpacity, Alert, ScrollView, Image, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { ChevronLeft } from 'lucide-react-native';
-import { useLocalSearchParams, router, useNavigation } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
+import { usePreventRemove } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { database, Task } from '@/database';
 import { TaskStatus } from '@/database/models/Task';
+import { TaskLocation } from '@/database/sqlite-db';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -15,7 +19,6 @@ import { syncManager } from '@/services/syncManager';
 export default function TaskDetailScreen() {
   const { taskId } = useLocalSearchParams<{ taskId: string }>();
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
   const [task, setTask] = useState<Task | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -25,6 +28,10 @@ export default function TaskDetailScreen() {
   const [originalStatus, setOriginalStatus] = useState<TaskStatus>('pending');
   const [originalImageUris, setOriginalImageUris] = useState<string[]>([]);
   const [imageUris, setImageUris] = useState<string[]>([]);
+  const [address, setAddress] = useState('');
+  const [location, setLocation] = useState<TaskLocation | null>(null);
+  const [originalLocation, setOriginalLocation] = useState<TaskLocation | null>(null);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const colorScheme = useColorScheme();
   const textColor = useThemeColor({}, 'text');
   const backgroundColor = useThemeColor({}, 'background');
@@ -36,26 +43,22 @@ export default function TaskDetailScreen() {
     loadTask();
   }, [taskId]);
 
-  // Intercept back navigation to warn about unsaved changes
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
-      const imagesChanged = JSON.stringify(imageUris.sort()) !== JSON.stringify(originalImageUris.sort());
-      
-      const hasChanges = 
-        title.trim() !== originalTitle ||
-        description.trim() !== originalDescription ||
-        currentStatus !== originalStatus ||
-        imagesChanged;
+  const hasUnsavedChanges = () => {
+    const imagesChanged = JSON.stringify(imageUris.sort()) !== JSON.stringify(originalImageUris.sort());
+    const locationChanged = JSON.stringify(location) !== JSON.stringify(originalLocation);
+    
+    return (
+      title.trim() !== originalTitle ||
+      description.trim() !== originalDescription ||
+      currentStatus !== originalStatus ||
+      imagesChanged ||
+      locationChanged
+    );
+  };
 
-      if (!hasChanges) {
-        // No unsaved changes, allow navigation
-        return;
-      }
-
-      // Prevent default behavior of leaving the screen
-      e.preventDefault();
-
-      // Show alert
+  usePreventRemove(
+    hasUnsavedChanges(),
+    ({ data }) => {
       Alert.alert(
         'Unsaved Changes',
         'You have unsaved changes. What would you like to do?',
@@ -69,7 +72,7 @@ export default function TaskDetailScreen() {
             text: 'Discard',
             style: 'destructive',
             onPress: () => {
-              navigation.dispatch(e.data.action);
+              router.back();
             },
           },
           {
@@ -82,7 +85,14 @@ export default function TaskDetailScreen() {
                       t.title = title.trim();
                       t.description = description.trim() || undefined;
                       t.status = currentStatus;
-                      t.imageUrl = imageUris.length > 0 ? imageUris : undefined;
+                      t.imageUrl = imageUris.length > 0 ? imageUris : null;
+          if (location && location.address && location.address.trim()) {
+            t.location = location;
+          } else if (location && (location.lat !== 0 || location.lng !== 0)) {
+            t.location = location;
+          } else {
+            t.location = undefined;
+          }
                       t.updatedAt = new Date();
                       if (t.syncStatus === 'synced') {
                         t.syncStatus = 'pending_sync';
@@ -92,19 +102,20 @@ export default function TaskDetailScreen() {
                   if (syncManager.getIsOnline()) {
                     syncManager.syncAll();
                   }
+                  router.back();
                 } catch (error) {
                   console.error('Error saving before navigation:', error);
+                  router.back();
                 }
+              } else {
+                router.back();
               }
-              navigation.dispatch(e.data.action);
             },
           },
         ]
       );
-    });
-
-    return unsubscribe;
-  }, [navigation, title, description, currentStatus, imageUris, originalTitle, originalDescription, originalStatus, originalImageUris, task]);
+    }
+  );
 
   useEffect(() => {
     if (task) {
@@ -119,12 +130,10 @@ export default function TaskDetailScreen() {
       setTitle(foundTask.title);
       setDescription(foundTask.description || '');
       setCurrentStatus(foundTask.status);
-      // Store original values to detect changes
       setOriginalTitle(foundTask.title);
       setOriginalDescription(foundTask.description || '');
       setOriginalStatus(foundTask.status);
       
-      // Load images
       if (foundTask.imageUrl) {
         const uris = Array.isArray(foundTask.imageUrl) ? foundTask.imageUrl : [foundTask.imageUrl];
         setImageUris(uris);
@@ -133,22 +142,22 @@ export default function TaskDetailScreen() {
         setImageUris([]);
         setOriginalImageUris([]);
       }
+      
+      if (foundTask.location) {
+        const taskLocation = foundTask.location;
+        setLocation(taskLocation);
+        setOriginalLocation({ ...taskLocation });
+        setAddress(taskLocation.address || '');
+      } else {
+        setLocation(null);
+        setOriginalLocation(null);
+        setAddress('');
+      }
     } catch (error) {
       console.error('Error loading task:', error);
       Alert.alert('Error', 'Task not found');
       router.back();
     }
-  };
-
-  const hasUnsavedChanges = () => {
-    const imagesChanged = JSON.stringify(imageUris.sort()) !== JSON.stringify(originalImageUris.sort());
-    
-    return (
-      title.trim() !== originalTitle ||
-      description.trim() !== originalDescription ||
-      currentStatus !== originalStatus ||
-      imagesChanged
-    );
   };
 
   const handleBackPress = () => {
@@ -195,7 +204,14 @@ export default function TaskDetailScreen() {
           t.title = title.trim();
           t.description = description.trim() || undefined;
           t.status = currentStatus;
-          t.imageUrl = imageUris.length > 0 ? imageUris : undefined;
+          t.imageUrl = imageUris.length > 0 ? imageUris : null;
+          if (location && location.address && location.address.trim()) {
+            t.location = location;
+          } else if (location && (location.lat !== 0 || location.lng !== 0)) {
+            t.location = location;
+          } else {
+            t.location = undefined;
+          }
           t.updatedAt = new Date();
           if (t.syncStatus === 'synced') {
             t.syncStatus = 'pending_sync';
@@ -203,16 +219,18 @@ export default function TaskDetailScreen() {
         });
       });
 
-      // Update original values after successful save
       setOriginalTitle(title.trim());
       setOriginalDescription(description.trim());
       setOriginalStatus(currentStatus);
       setOriginalImageUris([...imageUris]);
+      setOriginalLocation(location ? { ...location } : null);
 
-      // Reload task to get updated data
       await loadTask();
+      
+      if (location && location.address) {
+        setAddress(location.address);
+      }
 
-      // Trigger sync if online
       if (syncManager.getIsOnline()) {
         syncManager.syncAll();
       }
@@ -241,7 +259,6 @@ export default function TaskDetailScreen() {
                 await task.destroyPermanently();
               });
 
-              // If task has server ID, add to sync queue for deletion
               if (task.serverId) {
                 await syncManager.addToQueue({
                   taskId: task.serverId,
@@ -273,7 +290,7 @@ export default function TaskDetailScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
         quality: 0.8,
-        selectionLimit: 0, // 0 means no limit
+        selectionLimit: 0,
       });
 
       if (!result.canceled && result.assets.length > 0) {
@@ -313,9 +330,50 @@ export default function TaskDetailScreen() {
     setImageUris((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const getCurrentLocation = async () => {
+    try {
+      setIsLoadingLocation(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'We need location permissions to get your location');
+        setIsLoadingLocation(false);
+        return;
+      }
+
+      const currentLocation = await Location.getCurrentPositionAsync({});
+      const reverseGeocode = await Location.reverseGeocodeAsync({
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+      });
+
+      const addr = reverseGeocode[0];
+      const fullAddress = addr ? [
+        addr.street,
+        addr.city,
+        addr.region,
+        addr.postalCode,
+        addr.country,
+      ]
+        .filter(Boolean)
+        .join(', ') : '';
+      
+      const newLocation: TaskLocation = {
+        lat: currentLocation.coords.latitude,
+        lng: currentLocation.coords.longitude,
+        address: fullAddress || `Lat: ${currentLocation.coords.latitude.toFixed(6)}, Lng: ${currentLocation.coords.longitude.toFixed(6)}`,
+      };
+      
+      setLocation(newLocation);
+      setAddress(newLocation.address);
+      setIsLoadingLocation(false);
+    } catch (error) {
+      console.error('Error getting location:', error);
+      Alert.alert('Error', 'Failed to get location');
+      setIsLoadingLocation(false);
+    }
+  };
+
   const handleStatusChange = (newStatus: TaskStatus) => {
-    // Update local state immediately for UI feedback
-    // Don't save yet - it will be saved when "Update Task" is clicked
     setCurrentStatus(newStatus);
   };
 
@@ -355,7 +413,7 @@ export default function TaskDetailScreen() {
         </View>
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
 
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(100).duration(400)} style={styles.section}>
           <ThemedText type="subtitle" style={styles.label}>
             Title
           </ThemedText>
@@ -366,9 +424,9 @@ export default function TaskDetailScreen() {
             placeholder="Task title"
             placeholderTextColor="#94a3b8"
           />
-        </View>
+        </Animated.View>
 
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(150).duration(400)} style={styles.section}>
           <ThemedText type="subtitle" style={styles.label}>
             Description
           </ThemedText>
@@ -381,9 +439,9 @@ export default function TaskDetailScreen() {
             multiline
             numberOfLines={5}
           />
-        </View>
+        </Animated.View>
 
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(200).duration(400)} style={styles.section}>
           <View style={styles.labelContainer}>
             <View style={[styles.statusIndicator, { backgroundColor: getStatusColor(currentStatus) }]} />
             <ThemedText type="subtitle" style={styles.label}>
@@ -414,9 +472,9 @@ export default function TaskDetailScreen() {
               );
             })}
           </View>
-        </View>
+        </Animated.View>
 
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(250).duration(400)} style={styles.section}>
           <ThemedText type="subtitle" style={styles.label}>
             Images ({imageUris.length})
           </ThemedText>
@@ -457,25 +515,83 @@ export default function TaskDetailScreen() {
               <ThemedText style={styles.addImageButtonText}>📸 Take Photo</ThemedText>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(300).duration(400)} style={styles.section}>
+          <ThemedText type="subtitle" style={styles.label}>
+            Location
+          </ThemedText>
+          <TextInput
+            style={[styles.input, { color: textColor, backgroundColor, borderColor }]}
+            value={address}
+            onChangeText={(text) => {
+              setAddress(text);
+              if (location) {
+                setLocation({
+                  ...location,
+                  address: text,
+                });
+              } else if (text.trim()) {
+                setLocation({
+                  lat: 0,
+                  lng: 0,
+                  address: text,
+                });
+              } else {
+                setLocation(null);
+              }
+            }}
+            placeholder="Location address"
+            placeholderTextColor="#94a3b8"
+          />
+          <TouchableOpacity
+            style={[styles.locationButton, { borderColor }]}
+            onPress={getCurrentLocation}
+            disabled={isLoadingLocation}
+          >
+            {isLoadingLocation ? (
+              <ActivityIndicator size="small" color={textColor} />
+            ) : (
+              <ThemedText style={styles.locationButtonText}>📍 Get Current Location</ThemedText>
+            )}
+          </TouchableOpacity>
+          {location && location.lat !== 0 && location.lng !== 0 && (
+            <ThemedText style={styles.locationInfo}>
+              Coordinates: {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+            </ThemedText>
+          )}
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(350).duration(400)} style={styles.section}>
           <ThemedText type="subtitle" style={styles.label}>
             Sync Status
           </ThemedText>
-          <ThemedText style={styles.syncStatus}>
-            {task.syncStatus === 'pending_sync' && '⏳ Pending Sync'}
-            {task.syncStatus === 'syncing' && '🔄 Syncing...'}
-            {task.syncStatus === 'synced' && '✓ Synced'}
-          </ThemedText>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {task.syncStatus === 'pending_sync' && (
+              <ThemedText style={styles.syncStatus}>⏳ Pending Sync</ThemedText>
+            )}
+            {task.syncStatus === 'syncing' && (
+              <ThemedText style={styles.syncStatus}>🔄 Syncing...</ThemedText>
+            )}
+            {task.syncStatus === 'synced' && (
+              <>
+                <ThemedText style={[styles.syncStatus, { color: colorScheme === 'dark' ? '#4ade80' : '#22c55e', fontWeight: 'bold' }]}>
+                  ✓
+                </ThemedText>
+                <ThemedText style={[styles.syncStatus, { color: colorScheme === 'dark' ? '#4ade80' : '#22c55e' }]}>
+                  {' '}Synced
+                </ThemedText>
+              </>
+            )}
+          </View>
           {task.conflictResolution && (
             <ThemedText style={styles.conflictText}>
               ⚠️ Conflict: {task.conflictResolution}
             </ThemedText>
           )}
-        </View>
+        </Animated.View>
 
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(400).duration(400)} style={styles.section}>
           <ThemedText style={styles.metaText}>
             Created: {new Date(task.createdAt).toLocaleString()}
           </ThemedText>
@@ -487,17 +603,20 @@ export default function TaskDetailScreen() {
               Synced: {new Date(task.syncedAt).toLocaleString()}
             </ThemedText>
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
 
-      <View style={[
-        styles.buttonContainer, 
-        { 
-          paddingBottom: insets.bottom + 16,
-          backgroundColor: buttonContainerBg,
-          borderTopColor: buttonBorderColor,
-        }
-      ]}>
+      <Animated.View 
+        entering={FadeInUp.delay(450).duration(400)}
+        style={[
+          styles.buttonContainer, 
+          { 
+            paddingBottom: insets.bottom + 16,
+            backgroundColor: buttonContainerBg,
+            borderTopColor: buttonBorderColor,
+          }
+        ]}
+      >
         <TouchableOpacity style={styles.updateButton} onPress={handleUpdate}>
           <ThemedText style={styles.buttonText}>Update Task</ThemedText>
         </TouchableOpacity>
@@ -505,7 +624,7 @@ export default function TaskDetailScreen() {
         <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
           <ThemedText style={styles.buttonText}>Delete Task</ThemedText>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
     </ThemedView>
   );
 }
@@ -603,6 +722,23 @@ const styles = StyleSheet.create({
   addImageButtonText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  locationButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  locationButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  locationInfo: {
+    fontSize: 12,
+    opacity: 0.6,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   input: {
     borderWidth: 1,

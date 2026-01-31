@@ -19,13 +19,12 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
 export async function registerBackgroundSync() {
   try {
     await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-      minimumInterval: 15 * 60, // 15 minutes
+      minimumInterval: 15 * 60,
       stopOnTerminate: false,
       startOnBoot: true,
     });
     console.log('Background sync registered');
   } catch (error: any) {
-    // Background fetch not available in Expo Go - this is expected
     if (error?.message?.includes('Background Fetch has not been configured')) {
       console.log('Background sync not available in Expo Go (requires development build)');
     } else {

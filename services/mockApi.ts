@@ -1,12 +1,3 @@
-/**
- * Mock API Service for Testing
- * 
- * In a real implementation, replace the API_BASE_URL in syncManager.ts
- * with your actual backend endpoint.
- * 
- * This mock service simulates a REST API for task management.
- */
-
 export interface TaskResponse {
   id: string;
   title: string;
@@ -24,7 +15,6 @@ export interface TaskResponse {
   updated_at: string;
 }
 
-// In-memory store for mock API
 let mockTasks: Map<string, TaskResponse> = new Map();
 let nextId = 1;
 
@@ -38,7 +28,6 @@ export const mockApi = {
     image_url?: string;
     expires_at?: string;
   }): Promise<TaskResponse> {
-    // Simulate network delay
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     const task: TaskResponse = {
@@ -67,15 +56,13 @@ export const mockApi = {
       price?: number;
       location?: { lat: number; lng: number; address: string };
       image_url?: string;
-      expires_at?: string;
-    }
+    expires_at?: string;
+  }
   ): Promise<TaskResponse> {
-    // Simulate network delay
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     const existingTask = mockTasks.get(id);
     if (!existingTask) {
-      // If task doesn't exist, create it (this can happen if mock API was reset)
       const newTask: TaskResponse = {
         id: id,
         title: data.title,
@@ -105,7 +92,6 @@ export const mockApi = {
   },
 
   async deleteTask(id: string): Promise<void> {
-    // Simulate network delay
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     if (!mockTasks.has(id)) {
@@ -125,7 +111,6 @@ export const mockApi = {
     return Array.from(mockTasks.values());
   },
 
-  // Reset mock data (useful for testing)
   reset() {
     mockTasks.clear();
     nextId = 1;
