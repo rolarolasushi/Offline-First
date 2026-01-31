@@ -118,7 +118,7 @@ class SyncManager {
           status: task.status,
           price: task.price,
           location: task.location,
-          image_url: task.imageUrl,
+          image_url: Array.isArray(task.imageUrl) ? task.imageUrl[0] : task.imageUrl,
           expires_at: task.expiresAt ? task.expiresAt.toISOString() : undefined,
         });
         return {
@@ -163,7 +163,7 @@ class SyncManager {
           status: task.status,
           price: task.price,
           location: task.location,
-          image_url: task.imageUrl,
+          image_url: Array.isArray(task.imageUrl) ? task.imageUrl[0] : task.imageUrl,
           expires_at: task.expiresAt ? task.expiresAt.toISOString() : undefined,
         });
           return {
